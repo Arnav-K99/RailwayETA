@@ -1,0 +1,146 @@
+{
+  "model_type": "Gradient Boosted Section Traversal Regressor",
+  "framework": "Scikit-Learn (Pure C-Accelerated Engine)",
+  "train_samples": 12000,
+  "test_samples": 3000,
+  "mae_minutes": 3.93,
+  "rmse_minutes": 6.03,
+  "r2_score": 0.998,
+  "dataset_disclaimer": "Demo/Synthetic Dataset Model Performance (15,000 Section Runs)",
+  "features_used": [
+    "distance_km",
+    "historical_avg_time_min",
+    "historical_std_time_min",
+    "current_speed_kmh",
+    "current_delay_min",
+    "time_of_day_hour",
+    "day_of_week",
+    "weather_factor",
+    "congestion_score",
+    "trains_ahead",
+    "speed_restriction_active",
+    "speed_restriction_kmh",
+    "maintenance_block_active",
+    "unscheduled_halt_active",
+    "previous_section_delay_min"
+  ],
+  "feature_importances": [
+    {
+      "feature": "current_speed_kmh",
+      "readable_name": "Current Speed Kmh",
+      "importance": 0.2359,
+      "percentage": 23.6
+    },
+    {
+      "feature": "historical_avg_time_min",
+      "readable_name": "Historical Avg Time Min",
+      "importance": 0.2134,
+      "percentage": 21.3
+    },
+    {
+      "feature": "speed_restriction_kmh",
+      "readable_name": "Speed Restriction Kmh",
+      "importance": 0.1871,
+      "percentage": 18.7
+    },
+    {
+      "feature": "distance_km",
+      "readable_name": "Distance Km",
+      "importance": 0.1313,
+      "percentage": 13.1
+    },
+    {
+      "feature": "historical_std_time_min",
+      "readable_name": "Historical Std Time Min",
+      "importance": 0.124,
+      "percentage": 12.4
+    },
+    {
+      "feature": "speed_restriction_active",
+      "readable_name": "Speed Restriction Active",
+      "importance": 0.0798,
+      "percentage": 8.0
+    },
+    {
+      "feature": "congestion_score",
+      "readable_name": "Congestion Score",
+      "importance": 0.0183,
+      "percentage": 1.8
+    },
+    {
+      "feature": "weather_factor",
+      "readable_name": "Weather Factor",
+      "importance": 0.0076,
+      "percentage": 0.8
+    },
+    {
+      "feature": "trains_ahead",
+      "readable_name": "Trains Ahead",
+      "importance": 0.0011,
+      "percentage": 0.1
+    },
+    {
+      "feature": "maintenance_block_active",
+      "readable_name": "Maintenance Block Active",
+      "importance": 0.001,
+      "percentage": 0.1
+    },
+    {
+      "feature": "unscheduled_halt_active",
+      "readable_name": "Unscheduled Halt Active",
+      "importance": 0.0005,
+      "percentage": 0.0
+    },
+    {
+      "feature": "current_delay_min",
+      "readable_name": "Current Delay Min",
+      "importance": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "feature": "time_of_day_hour",
+      "readable_name": "Time Of Day Hour",
+      "importance": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "feature": "day_of_week",
+      "readable_name": "Day Of Week",
+      "importance": 0.0,
+      "percentage": 0.0
+    },
+    {
+      "feature": "previous_section_delay_min",
+      "readable_name": "Previous Section Delay Min",
+      "importance": 0.0,
+      "percentage": 0.0
+    }
+  ],
+  "sample_residuals": [
+    -3.96,
+    -6.29,
+    0.73,
+    0.78,
+    0.39,
+    4.58,
+    1.05,
+    9.53,
+    2.44,
+    -3.16,
+    -0.77,
+    -1.61,
+    13.37,
+    0.99,
+    -1.58,
+    -3.39,
+    3.61,
+    -1.25,
+    -0.93,
+    -4.98,
+    6.18,
+    4.89,
+    1.27,
+    3.55,
+    -1.52
+  ]
+}
