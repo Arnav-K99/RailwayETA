@@ -7,7 +7,6 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { LiveSimulationPage } from './pages/LiveSimulationPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { EtaForecastPage } from './pages/EtaForecastPage';
 import { NetworkConditionsPage } from './pages/NetworkConditionsPage';
 import { ModelAnalyticsPage } from './pages/ModelAnalyticsPage';
 import { DataFeedsPage } from './pages/DataFeedsPage';
@@ -141,6 +140,7 @@ export default function App() {
               onClearAll={handleClearAll}
               onStartSimulation={handleStart}
               onResetSimulation={handleReset}
+              initialTrainId={selectedTrainId}
             />
           )}
 
@@ -148,17 +148,9 @@ export default function App() {
             <DashboardPage
               onSelectTrain={(id) => {
                 setSelectedTrainId(id);
-                if (id === '12951') {
-                  setActiveTab('simulation');
-                } else {
-                  setActiveTab('eta');
-                }
+                setActiveTab('simulation');
               }}
             />
-          )}
-
-          {activeTab === 'eta' && (
-            <EtaForecastPage state={state} initialTrainId={selectedTrainId} />
           )}
 
           {activeTab === 'network' && (

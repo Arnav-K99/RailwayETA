@@ -1,9 +1,8 @@
 import React from 'react';
 import { 
   LayoutDashboard, 
-  Radio, 
-  Clock, 
-  Network, 
+  Radio,
+  Network,
   BarChart3, 
   TrainTrack
 } from 'lucide-react';
@@ -19,11 +18,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab, 
   isWsConnected 
 }) => {
-  // Dashboard on top, followed by Live Simulation as its own section, then ETA Forecast, Network, Analytics
+  // Dashboard on top, followed by Live Simulation as its own section, then Network, Analytics
   const navItems = [
     { id: 'dashboard', label: 'Operations Dashboard', icon: LayoutDashboard },
     { id: 'simulation', label: 'Live Train Simulation', icon: Radio, highlight: true },
-    { id: 'eta', label: 'Dynamic ETA Forecast', icon: Clock },
     { id: 'network', label: 'Network Conditions', icon: Network },
     { id: 'analytics', label: 'ML Model Analytics', icon: BarChart3 },
   ];

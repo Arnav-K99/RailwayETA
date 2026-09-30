@@ -5,8 +5,16 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
 from app.data.corridor_data import STATIONS, SECTIONS
+from app.data.train_fleet_data import TRAIN_FLEET
 from app.services.eta_engine import eta_service
 from app.services.event_engine import event_manager
+
+# Fleet section status -> live event type the simulator / ETA engine understand
+STATUS_TO_EVENT = {
+    "CONGESTED": "congestion",
+    "SPEED_RESTRICTION": "speed_restriction",
+    "MAINTENANCE": "maintenance_block",
+}
 
 class TrainSimulator:
     def __init__(self):
@@ -54,10 +62,20 @@ class TrainSimulator:
         # Station halt timer (simulated seconds)
         self.halt_seconds_remaining = 0.0
         
-        # Clear operational events on reset
+        # Clear operational events on reset, then load this train's baseline conditions from the
+        # fleet data (e.g. congestion on Kota → Sawai Madhopur) so the live run, the ETA engine and
+        # the network page all agree with what the dashboard shows
         event_manager.clear_all_events()
+        fleet_entry = next((t for t in TRAIN_FLEET if t["id"] == self.train_id), None)
+        for sec in (fleet_entry or {}).get("sections", []):
+            event_type = STATUS_TO_EVENT.get(sec.get("status", "NORMAL"))
+            if event_type:
+                event_manager.trigger_event(event_type, section_id=sec["id"])
 
     def start(self):
+        # A finished run restarts from Kota instead of sitting at Agra forever
+        if self.status == "COMPLETED":
+            self.reset()
         if not self.is_running:
             self.is_running = True
             self.is_paused = False
@@ -141,7 +159,9 @@ class TrainSimulator:
                     continue
 
                 # Scale simulation clock and distance proportionally with speed_multiplier
-                sim_dt_seconds = dt_real * (self.speed_multiplier * 5.0)
+                # 30 sim-seconds per real second at 1x: Kota → Agra takes ~40s at 10x, ~8s at 50x,
+                # so motion is visible on the map (at 5.0 the train moved ~1px per second)
+                sim_dt_seconds = dt_real * (self.speed_multiplier * 30.0)
                 self.sim_time = self.sim_time + timedelta(seconds=sim_dt_seconds)
                 
                 # Check for active operational disruptions affecting current section
@@ -153,7 +173,7 @@ class TrainSimulator:
 
                 # 1. Handle Station Halt or Unscheduled Halt
                 if has_halt:
-                    self.speed_kmh = max(0.0, self.speed_kmh - 25.0 * dt_real)
+                    self.speed_kmh = max(0.0, self.speed_kmh - 0.5 * sim_dt_seconds)
                     self.status = "SIGNAL_HALT"
                     self.current_delay_min += (sim_dt_seconds / 60.0)
                     continue
@@ -175,11 +195,12 @@ class TrainSimulator:
                 else:
                     self.target_speed_kmh = max_perm * 0.92
 
-                # Smooth acceleration / deceleration
+                # Smooth acceleration / deceleration, in km/h per SIM second so the train
+                # reaches line speed equally fast at every speed multiplier (≈7.5 sim-min to 110 km/h)
                 if self.speed_kmh < self.target_speed_kmh:
-                    self.speed_kmh = min(self.target_speed_kmh, self.speed_kmh + 12.0 * dt_real)
+                    self.speed_kmh = min(self.target_speed_kmh, self.speed_kmh + 0.24 * sim_dt_seconds)
                 elif self.speed_kmh > self.target_speed_kmh:
-                    self.speed_kmh = max(self.target_speed_kmh, self.speed_kmh - 18.0 * dt_real)
+                    self.speed_kmh = max(self.target_speed_kmh, self.speed_kmh - 0.36 * sim_dt_seconds)
 
                 # 3. Distance & Position Traversal
                 # Distance covered in sim_dt_seconds: (km/h) * (seconds / 3600)
@@ -223,7 +244,7 @@ class TrainSimulator:
                         self.point_index = 0
                         
                         # Halt at intermediate junction for 20-30 seconds sim time
-                        self.halt_seconds_remaining = 35.0
+                        self.halt_seconds_remaining = 300.0 # 5 sim-min dwell ≈ 1s real at 10x, visible on the map
                         self.status = "STATION_HALT"
                     else:
                         # Journey completed at Agra Cantt

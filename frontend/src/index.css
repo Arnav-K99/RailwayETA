@@ -137,12 +137,6 @@ body {
   border: none !important;
 }
 
-/* Smooth train marker gliding on map */
-.custom-train-marker,
-.govt-rtis-train-marker {
-  transition: transform 0.24s linear !important;
-  will-change: transform;
-}
 
 /* Subtle fade in for tabs */
 @keyframes fadeIn {

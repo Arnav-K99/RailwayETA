@@ -18,8 +18,9 @@ interface LiveSimulationPageProps {
   onTriggerEvent: (type: string, title?: string, impact?: number) => void;
   onDeleteEvent: (id: string) => void;
   onClearAll: () => void;
-  onStartSimulation: () => void;
-  onResetSimulation: () => void;
+  onStartSimulation: () => Promise<void> | void;
+  onResetSimulation: () => Promise<void> | void;
+  initialTrainId?: string;
 }
 
 // Complete geographic coordinates for all 6 train corridors
@@ -56,6 +57,17 @@ const STATION_COORDS: Record<string, { lat: number; lon: number; name: string }>
   MMCT: { lat: 18.9696, lon: 72.8193, name: 'Mumbai Central' }
 };
 
+// Full, fixed stop sequence per train (mirrors backend train_fleet_data / corridor_data).
+// The map always draws the whole journey; live data only says where along it the train is.
+const TRAIN_ROUTES: Record<string, string[]> = {
+  '12951': ['KOTA', 'SWM', 'GGC', 'BTE', 'MTJ', 'AGC'],
+  '12002': ['MTJ', 'AGC', 'DHO', 'GWL', 'VGLJ', 'BPL'],
+  '22436': ['CNB', 'PRYJ', 'BSB'],
+  '12260': ['DHN', 'ASN', 'DGR', 'BWN', 'SDAH'],
+  '12414': ['GGN', 'RE', 'AWR', 'BKI', 'JP', 'AII'],
+  '12953': ['NZM', 'MTJ', 'SWM', 'KOTA', 'RTM', 'MMCT'],
+};
+
 export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
   state,
   routeData,
@@ -63,16 +75,21 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
   onDeleteEvent,
   onClearAll,
   onStartSimulation,
-  onResetSimulation
+  onResetSimulation,
+  initialTrainId
 }) => {
   const [trains, setTrains] = useState<Train[]>([]);
-  const [selectedTrainId, setSelectedTrainId] = useState<string>('12951');
+  // Train picked on the dashboard ("Live Sim" button) opens selected here
+  const [selectedTrainId, setSelectedTrainId] = useState<string>(initialTrainId || '12951');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedTrainEta, setSelectedTrainEta] = useState<any>(null);
 
-  // Auto-start simulation on mount so train visibly moves between stations immediately
+  // Every visit to this section restarts the run from the first station
   useEffect(() => {
-    onStartSimulation();
+    (async () => {
+      await onResetSimulation();
+      await onStartSimulation();
+    })();
   }, []);
 
   // Load all 6 monitored trains
@@ -91,6 +108,7 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
   // Fetch selected train dynamic ETA data
   useEffect(() => {
     async function loadEta() {
+      setSelectedTrainEta(null); // don't show the previous train's stops while this one loads
       try {
         const data = await api.getTrainEta(selectedTrainId);
         setSelectedTrainEta(data);
@@ -138,91 +156,106 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
     );
   }, [trains, searchTerm]);
 
-  // Stations list for left column
+  // Stations list from the API (ETAs for every stop after the train's starting point)
   const stationsList = useMemo(() => {
     return currentTrain?.upcoming_stations ?? [];
   }, [currentTrain]);
 
-  // Build bold map stations for right column map
-  const mapStations = useMemo(() => {
-    const list: Array<any> = [];
+  // 12951 is driven by the backend simulator; the other trains are animated here
+  const isLiveTrain = selectedTrainId === '12951';
 
-    // Add current / departure station
-    if (currentTrain?.current_station) {
-      const code = currentTrain.current_station.includes('Kota') ? 'KOTA' :
-                   currentTrain.current_station.includes('Mathura') ? 'MTJ' :
-                   currentTrain.current_station.includes('Kanpur') ? 'CNB' :
-                   currentTrain.current_station.includes('Dhanbad') ? 'DHN' :
-                   currentTrain.current_station.includes('Gurgaon') ? 'GGN' :
-                   currentTrain.current_station.includes('Nizamuddin') ? 'NZM' : 'NDLS';
-      const coord = STATION_COORDS[code] || { lat: currentTrain.latitude, lon: currentTrain.longitude, name: currentTrain.current_station };
-      list.push({
-        code: code,
-        name: coord.name,
-        lat: coord.lat,
-        lon: coord.lon,
-        isCurrent: true,
-        isNext: false,
-        scheduled_arrival: 'Departed'
-      });
+  // Fixed stop sequence for the selected train
+  const routeCodes = useMemo(
+    () => (TRAIN_ROUTES[selectedTrainId] ?? []).filter(code => STATION_COORDS[code]),
+    [selectedTrainId]
+  );
+
+  // Where each stop sits along the route, as a 0..1 fraction of total length
+  const stopFractions = useMemo(() => {
+    const stops = routeCodes.map(code => STATION_COORDS[code]);
+    const cumulative = [0];
+    for (let i = 1; i < stops.length; i++) {
+      const kmScale = Math.cos((stops[i].lat * Math.PI) / 180); // shrink longitude degrees
+      cumulative.push(cumulative[i - 1] + Math.hypot(
+        stops[i].lat - stops[i - 1].lat,
+        (stops[i].lon - stops[i - 1].lon) * kmScale
+      ));
     }
-
-    if (stationsList && stationsList.length > 0) {
-      stationsList.forEach((st: any) => {
-        const code = st.station_code || st.station_id;
-        const coord = STATION_COORDS[code] || { lat: 25.5, lon: 76.5, name: st.station_name };
-        list.push({
-          code: code,
-          name: st.station_name || coord.name,
-          lat: coord.lat,
-          lon: coord.lon,
-          isNext: currentTrain?.next_station_code === code,
-          isCurrent: false,
-          scheduled_arrival: st.scheduled_arrival,
-          predicted_eta: st.predicted_eta
-        });
-      });
-    }
-
-    return list;
-  }, [stationsList, currentTrain]);
+    const total = cumulative[cumulative.length - 1] || 1;
+    return cumulative.map(d => d / total);
+  }, [routeCodes]);
 
   // Current speed multiplier from state
   const speedMultiplier = state?.simulation?.speed_multiplier ?? 10;
-  const isSimRunning = state?.simulation?.is_running ?? true;
   const isSimPaused = state?.simulation?.is_paused ?? false;
 
-  // Continuous smooth train motion state for non-simulator trains
-  const [animProgress, setAnimProgress] = useState<number>(0.35);
+  // Journey progress (0 = origin, 1 = destination) for the non-simulated trains
+  const [animProgress, setAnimProgress] = useState<number>(0);
+
+  // Each train starts its journey from the origin when selected
+  useEffect(() => setAnimProgress(0), [selectedTrainId]);
 
   useEffect(() => {
-    if (selectedTrainId === '12951') return; // 12951 uses live backend simulator
-    if (!isSimRunning || isSimPaused) return;
+    // Only an explicit pause stops these; 12951 finishing its run (is_running=false) must not freeze them
+    if (isLiveTrain || isSimPaused) return;
 
-    // Scale step dynamically with speedMultiplier:
-    // At 1x: step = 0.001 per 50ms (takes ~50s)
-    // At 5x: step = 0.005 per 50ms (takes ~10s)
-    // At 10x: step = 0.01 per 50ms (takes ~5s)
-    // At 20x: step = 0.02 per 50ms (takes ~2.5s)
-    // At 50x: step = 0.05 per 50ms (takes ~1s)
-    const step = 0.001 * speedMultiplier;
+    // Whole journey takes ~400s / speed (10x ≈ 40s, 50x ≈ 8s, same pace as 12951), then holds at its destination
+    const step = speedMultiplier / 8000;
     const timer = setInterval(() => {
-      setAnimProgress(prev => {
-        const next = prev + step;
-        return next > 0.98 ? 0.02 : next;
-      });
+      setAnimProgress(prev => Math.min(1, prev + step));
     }, 50);
     return () => clearInterval(timer);
-  }, [selectedTrainId, speedMultiplier, isSimRunning, isSimPaused]);
+  }, [isLiveTrain, speedMultiplier, isSimPaused]);
 
-  // Build route polyline between stations so the ENTIRE track is visible and points sit 100% on the track
+  // Index of the next stop: live code for 12951, otherwise the first stop beyond the train
+  const arrived = isLiveTrain
+    ? state?.train?.status === 'COMPLETED'
+    : animProgress >= 1;
+  const nextIdx = arrived
+    ? -1
+    : isLiveTrain
+      ? routeCodes.indexOf(currentTrain?.next_station_code ?? '')
+      : stopFractions.findIndex(f => f > animProgress);
+  const lastLeftIdx = arrived ? routeCodes.length - 1 : nextIdx - 1;
+  const nextCode: string | undefined = routeCodes[nextIdx];
+
+  // Table rows: only the stops still ahead of the train
+  const tableStations = useMemo(() => {
+    if (arrived) return [];
+    if (isLiveTrain) return stationsList;
+    return stationsList.filter((st: any) => routeCodes.indexOf(st.station_code || st.station_id) >= nextIdx);
+  }, [arrived, isLiveTrain, stationsList, routeCodes, nextIdx]);
+
+  // Map stations = whole route; flags only mark where the train is along it
+  const mapStations = useMemo(() => {
+    const upcoming = new Map<string, any>(
+      tableStations.map((st: any) => [st.station_code || st.station_id, st])
+    );
+    return routeCodes.map((code, i) => {
+      const coord = STATION_COORDS[code];
+      const st = upcoming.get(code);
+      return {
+        code,
+        name: st?.station_name || coord.name,
+        lat: coord.lat,
+        lon: coord.lon,
+        isNext: i === nextIdx,
+        isCurrent: i === lastLeftIdx,
+        scheduled_arrival: st?.scheduled_arrival,
+        predicted_eta: st?.predicted_eta
+      };
+    });
+  }, [routeCodes, tableStations, nextIdx, lastLeftIdx]);
+
+  // Build route polyline from the fixed route only, so it (and the map zoom) changes per train, not per tick
   const routePolyline: Array<[number, number]> = useMemo(() => {
-    if (mapStations.length < 2) return [];
+    const stops = routeCodes.map(code => STATION_COORDS[code]);
+    if (stops.length < 2) return [];
 
     const points: Array<[number, number]> = [];
-    for (let i = 0; i < mapStations.length - 1; i++) {
-      const s1 = mapStations[i];
-      const s2 = mapStations[i + 1];
+    for (let i = 0; i < stops.length - 1; i++) {
+      const s1 = stops[i];
+      const s2 = stops[i + 1];
       const steps = 30;
       for (let step = 0; step < steps; step++) {
         const t = step / steps;
@@ -232,10 +265,10 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
         ]);
       }
     }
-    const last = mapStations[mapStations.length - 1];
+    const last = stops[stops.length - 1];
     points.push([last.lat, last.lon]);
     return points;
-  }, [mapStations]);
+  }, [routeCodes]);
 
   // Dynamic moving train object along the track
   const mapTrain = useMemo(() => {
@@ -243,14 +276,20 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
     let lat = currentTrain.latitude;
     let lon = currentTrain.longitude;
 
-    if (selectedTrainId === '12951' && state?.train) {
+    if (isLiveTrain && state?.train) {
       lat = state.train.latitude;
       lon = state.train.longitude;
-    } else if (mapStations.length >= 2) {
-      const s1 = mapStations[0];
-      const s2 = mapStations[1];
-      lat = s1.lat + (s2.lat - s1.lat) * animProgress;
-      lon = s1.lon + (s2.lon - s1.lon) * animProgress;
+    } else if (arrived && mapStations.length > 0) {
+      const last = mapStations[mapStations.length - 1];
+      lat = last.lat;
+      lon = last.lon;
+    } else if (nextIdx > 0) {
+      // Between the stop it last left and its next stop, by distance along the route
+      const s1 = mapStations[nextIdx - 1];
+      const s2 = mapStations[nextIdx];
+      const t = (animProgress - stopFractions[nextIdx - 1]) / (stopFractions[nextIdx] - stopFractions[nextIdx - 1]);
+      lat = s1.lat + (s2.lat - s1.lat) * t;
+      lon = s1.lon + (s2.lon - s1.lon) * t;
     }
 
     return {
@@ -258,12 +297,12 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
       name: currentTrain.name,
       latitude: lat,
       longitude: lon,
-      speed_kmh: currentTrain.speed_kmh ?? 78,
+      speed_kmh: arrived ? 0 : (currentTrain.speed_kmh ?? 78),
       current_delay_min: currentTrain.current_delay_min ?? 0,
-      current_station: currentTrain.current_station,
-      next_station: currentTrain.next_station,
+      current_station: mapStations[lastLeftIdx]?.name,
+      next_station: mapStations[nextIdx]?.name, // undefined once arrived
     };
-  }, [currentTrain, selectedTrainId, state, mapStations, animProgress]);
+  }, [currentTrain, isLiveTrain, state, mapStations, arrived, nextIdx, lastLeftIdx, stopFractions, animProgress]);
 
   const currentDelay = currentTrain?.current_delay_min ?? 0;
 
@@ -323,7 +362,7 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
                 {currentTrain?.train_number}
               </span>
               <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800">
-                {currentTrain?.name}
+                {currentTrain?.name ?? currentTrain?.train_name}
               </h3>
             </div>
             <div className="text-xs font-mono">
@@ -337,27 +376,28 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto flex-1">
-            <table className="mac-table w-full">
+          <div className="overflow-y-auto flex-1">
+            <table className="mac-table w-full [&_th]:px-3 [&_td]:px-3">
               <thead>
                 <tr>
                   <th>Station</th>
-                  <th>Original Time</th>
-                  <th>Predicted ETA</th>
-                  <th>Delay</th>
+                  <th>Sched</th>
+                  <th>ETA</th>
                   <th>Confidence</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-sans">
-                {stationsList.length === 0 ? (
+                {tableStations.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400 text-xs font-mono">
-                      No upcoming station stops for this journey.
+                    <td colSpan={4} className="py-12 text-center text-slate-400 text-xs font-mono">
+                      {arrived
+                        ? `Arrived at ${mapStations[mapStations.length - 1]?.name ?? 'destination'}.`
+                        : 'No upcoming station stops for this journey.'}
                     </td>
                   </tr>
                 ) : (
-                  stationsList.map((st: any) => {
-                    const isNext = currentTrain?.next_station_code === (st.station_code || st.station_id);
+                  tableStations.map((st: any) => {
+                    const isNext = nextCode === (st.station_code || st.station_id);
                     const delayMin = Math.round(st.delay_minutes || 0);
 
                     return (
@@ -392,20 +432,16 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
                           {st.scheduled_arrival}
                         </td>
 
-                        {/* Predicted Dynamic ETA */}
-                        <td className="font-mono font-bold text-xs text-blue-700">
-                          {st.predicted_eta}
-                        </td>
-
-                        {/* Delay */}
-                        <td>
-                          <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
-                            delayMin > 5
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        {/* Predicted Dynamic ETA: red = late, green = early */}
+                        <td className="font-mono text-xs">
+                          <div className={`font-bold ${
+                            delayMin > 1 ? 'text-red-600' : delayMin < -1 ? 'text-emerald-600' : 'text-slate-800'
                           }`}>
-                            {delayMin > 0 ? `+${delayMin}m` : 'On Time'}
-                          </span>
+                            {st.predicted_eta}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {delayMin > 1 ? `+${delayMin}m late` : delayMin < -1 ? `${-delayMin}m early` : 'on time'}
+                          </div>
                         </td>
 
                         {/* Confidence */}
@@ -414,7 +450,7 @@ export const LiveSimulationPage: React.FC<LiveSimulationPageProps> = ({
                             {st.confidence_percent || 90}%
                           </div>
                           {st.confidence_range && (
-                            <div className="text-[10px] text-slate-400 font-mono">
+                            <div className="text-[10px] text-slate-400 font-mono whitespace-nowrap">
                               {st.confidence_range}
                             </div>
                           )}

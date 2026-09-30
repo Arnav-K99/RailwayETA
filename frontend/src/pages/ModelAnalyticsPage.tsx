@@ -130,26 +130,28 @@ export const ModelAnalyticsPage: React.FC = () => {
           </span>
         </div>
 
-        <div className="h-[340px] w-full">
+        <div className="h-[420px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={features}
-              layout="vertical"
-              margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+              margin={{ top: 10, right: 20, left: 0, bottom: 10 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-              <XAxis 
-                type="number" 
-                stroke="#94a3b8" 
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis
+                type="category"
+                dataKey="readable_name"
+                stroke="#94a3b8"
+                interval={0}
+                angle={-35}
+                textAnchor="end"
+                height={120}
+                tick={{ fill: '#334155', fontSize: 11 }}
+              />
+              <YAxis
+                type="number"
+                stroke="#94a3b8"
                 unit="%"
                 tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
-              />
-              <YAxis 
-                type="category" 
-                dataKey="readable_name" 
-                stroke="#94a3b8" 
-                tick={{ fill: '#334155', fontSize: 11 }}
-                width={160}
               />
               <Tooltip
                 contentStyle={{
@@ -166,7 +168,8 @@ export const ModelAnalyticsPage: React.FC = () => {
               <Bar 
                 dataKey="percentage" 
                 fill="#2563eb" 
-                radius={[0, 4, 4, 0]}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={48}
               />
             </BarChart>
           </ResponsiveContainer>
