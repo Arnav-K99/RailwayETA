@@ -83,6 +83,10 @@ export interface NetworkSection {
   has_maintenance: boolean;
   expected_impact_min: number;
   active_events: OperationalEvent[];
+  // Live position of the simulated train relative to this section (null for non-simulated trains)
+  train_state?: 'PASSED' | 'CURRENT' | 'AHEAD' | null;
+  progress_percent?: number | null;
+  live_speed_kmh?: number | null;
 }
 
 export interface ModelAnalytics {
